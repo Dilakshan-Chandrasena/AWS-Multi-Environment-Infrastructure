@@ -45,6 +45,9 @@ jobs:
           terraform_version: "1.10.5"
           terraform_wrapper: false
 
+      - name: Clear cached AWS provider package
+        run: rm -rf .terraform/providers
+
       - name: Check formatting
         run: terraform fmt -check -recursive
 
@@ -101,7 +104,10 @@ jobs:
         with:
           terraform_version: "1.10.5"
           terraform_wrapper: false
-
+       
+      - name: Clear cached AWS provider package
+        run: rm -rf .terraform/providers
+        
       - name: Configure AWS credentials using OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
