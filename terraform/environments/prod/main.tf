@@ -34,9 +34,9 @@ module "alb" {
   vpc_id                = module.network.vpc_id
   public_subnet_ids     = module.network.public_subnet_ids
   alb_security_group_id = module.security_groups.alb_security_group_id
-
-  app_port          = var.app_port
-  health_check_path = "/health"
+  certificate_arn       = "arn:aws:acm:us-east-1:796480644368:certificate/b34166e0-a111-4a41-a6f4-4e11b50d1a69"
+  app_port              = var.app_port
+  health_check_path     = "/health"
 
   tags = {
     Project     = "progress-partners-assessment"

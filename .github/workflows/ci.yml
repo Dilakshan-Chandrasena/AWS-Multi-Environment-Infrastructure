@@ -3,11 +3,16 @@ name: CI Pipeline
 
 on:
   pull_request:
-    branches:
-      - main
+    paths:
+      - "app/**"
+      - ".github/workflows/ci.yml"
   push:
     branches:
       - main
+    paths:
+      - "app/**"
+      - ".github/workflows/ci.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
