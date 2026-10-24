@@ -1,0 +1,38 @@
+
+# Git metadata
+.git
+.gitignore
+
+# Python virtual environments and cache
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Test files and development-only dependencies
+test_*.py
+tests/
+
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+
+# Local configuration and credentials
+.aws/
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Logs
+*.log
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
