@@ -31,6 +31,13 @@ variable "health_check_path" {
   default     = "/health"
 }
 
+variable "certificate_arn" {
+  description = "ACM certificate ARN for HTTPS. Null disables the HTTPS listener."
+  type        = string
+  default     = null
+  nullable    = true
+}
+
 variable "tags" {
   description = "Tags to apply to ALB resources."
   type        = map(string)
