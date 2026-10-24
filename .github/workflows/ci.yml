@@ -80,3 +80,62 @@ jobs:
           ignore-unfixed: true
           vuln-type: os,library
           severity: CRITICAL,HIGH
+
+  publish-ecr:
+    name: Publish Image to Amazon ECR
+    runs-on: ubuntu-latest
+    needs:
+      - test
+      - dependency-scan
+      - docker-build
+
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      vars.ENABLE_ECR_PUSH == 'true'
+
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      AWS_REGION: us-east-1
+      ECR_REPOSITORY: progress-partners-assessment-dev
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials using OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            --tag "$ECR_REPOSITORY:${GITHUB_SHA}" \
+            ./app
+
+      - name: Tag image for ECR
+        env:
+          AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+        run: |
+          AWS_ACCOUNT_ID="${AWS_ROLE_ARN#arn:aws:iam::}"
+          AWS_ACCOUNT_ID="${AWS_ACCOUNT_ID%%:*}"
+          ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+
+          docker tag \
+            "$ECR_REPOSITORY:${GITHUB_SHA}" \
+            "$ECR_REGISTRY/$ECR_REPOSITORY:${GITHUB_SHA}"
+
+          echo "ECR_REGISTRY=$ECR_REGISTRY" >> "$GITHUB_ENV"
+
+      - name: Push image to ECR
+        run: |
+          docker push \
+            "$ECR_REGISTRY/$ECR_REPOSITORY:${GITHUB_SHA}"

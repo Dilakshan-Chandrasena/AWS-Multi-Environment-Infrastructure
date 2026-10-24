@@ -13,3 +13,17 @@ module "network" {
     Environment = var.environment
   }
 }
+
+
+
+
+module "ecr" {
+  source = "../../modules/ecr"
+
+  name = "progress-partners-assessment-${var.environment}"
+
+  tags = {
+    Project     = "progress-partners-assessment"
+    Environment = var.environment
+  }
+}
