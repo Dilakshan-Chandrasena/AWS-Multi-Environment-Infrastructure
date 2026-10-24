@@ -27,9 +27,6 @@ resource "aws_security_group" "alb" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # ALB egress is managed by a separate rule below.  
-  egress = []
-
   tags = merge(local.common_tags, {
     Name = "${var.name}-alb-sg"
   })
