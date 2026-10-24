@@ -7,6 +7,8 @@ locals {
 }
 
 resource "aws_cloudwatch_metric_alarm" "cpu_high" {
+  count = var.create_alarms ? 1 : 0
+
   alarm_name          = "${var.name}-ecs-cpu-high"
   alarm_description   = "ECS service CPU utilization is above the configured threshold."
   namespace           = "AWS/ECS"
@@ -27,6 +29,7 @@ resource "aws_cloudwatch_metric_alarm" "cpu_high" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "memory_high" {
+  count = var.create_alarms ? 1 : 0
   alarm_name          = "${var.name}-ecs-memory-high"
   alarm_description   = "ECS service memory utilization is above the configured threshold."
   namespace           = "AWS/ECS"
@@ -47,6 +50,7 @@ resource "aws_cloudwatch_metric_alarm" "memory_high" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "running_tasks_low" {
+  count = var.create_alarms ? 1 : 0
   alarm_name          = "${var.name}-ecs-running-tasks-low"
   alarm_description   = "ECS service has fewer running tasks than desired."
   namespace           = "ECS/ContainerInsights"

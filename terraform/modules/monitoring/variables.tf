@@ -36,6 +36,12 @@ variable "desired_task_count" {
   }
 }
 
+variable "create_alarms" {
+  description = "Whether to create ECS service monitoring alarms."
+  type        = bool
+  default     = false
+}
+
 variable "tags" {
   description = "Tags to apply to monitoring resources."
   type        = map(string)

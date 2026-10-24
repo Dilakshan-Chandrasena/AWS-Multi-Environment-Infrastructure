@@ -79,19 +79,10 @@ module "ecs" {
   private_subnet_ids    = module.network.private_subnet_ids
   app_security_group_id = module.security_groups.app_security_group_id
   target_group_arn      = module.alb.target_group_arn
-  execution_role_arn    = module.iam.execution_role_arn
-  task_role_arn         = module.iam.task_role_arn
-
-  # Temporary image tag for planning only.
-  # The image must be pushed to ECR before creating the ECS service.
-  image_uri = "${module.ecr.repository_url}:bootstrap"
-
-  container_port     = var.app_port
-  desired_count      = 1
-  cpu                = 256
-  memory             = 512
-  aws_region         = var.aws_region
-  log_retention_days = 7
+  container_port        = var.app_port
+  desired_count         = 1
+  log_retention_days    = 7
+  create_service        = false
 
   tags = {
     Project     = "progress-partners-assessment"
@@ -106,12 +97,12 @@ module "monitoring" {
 
   name               = "${var.environment}-platform"
   cluster_name       = module.ecs.cluster_name
-  service_name       = module.ecs.service_name
+  service_name       = "${var.environment}-platform-service"
   desired_task_count = 1
 
   cpu_threshold    = 70
   memory_threshold = 70
-
+  create_alarms    = false
   tags = {
     Project     = "progress-partners-assessment"
     Environment = var.environment

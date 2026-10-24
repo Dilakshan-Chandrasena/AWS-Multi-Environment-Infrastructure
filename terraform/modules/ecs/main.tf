@@ -26,47 +26,18 @@ resource "aws_ecs_cluster" "this" {
   tags = local.common_tags
 }
 
-resource "aws_ecs_task_definition" "app" {
-  family                   = "${var.name}-task"
-  requires_compatibilities = ["FARGATE"]
-  network_mode             = "awsvpc"
-  cpu                      = var.cpu
-  memory                   = var.memory
-  execution_role_arn       = var.execution_role_arn
-  task_role_arn            = var.task_role_arn
+data "aws_ecs_task_definition" "app" {
+  count = var.create_service ? 1 : 0
 
-  container_definitions = jsonencode([
-    {
-      name      = local.container_name
-      image     = var.image_uri
-      essential = true
-
-      portMappings = [
-        {
-          containerPort = var.container_port
-          protocol      = "tcp"
-        }
-      ]
-
-      logConfiguration = {
-        logDriver = "awslogs"
-
-        options = {
-          "awslogs-group"         = aws_cloudwatch_log_group.app.name
-          "awslogs-region"        = var.aws_region
-          "awslogs-stream-prefix" = "app"
-        }
-      }
-    }
-  ])
-
-  tags = local.common_tags
+  task_definition = "${var.name}-task"
 }
 
 resource "aws_ecs_service" "app" {
+  count = var.create_service ? 1 : 0
+
   name            = "${var.name}-service"
   cluster         = aws_ecs_cluster.this.id
-  task_definition = aws_ecs_task_definition.app.arn
+  task_definition = data.aws_ecs_task_definition.app[0].arn
   desired_count   = var.desired_count
   launch_type     = "FARGATE"
 
@@ -89,9 +60,15 @@ resource "aws_ecs_service" "app" {
     rollback = true
   }
 
-  tags = local.common_tags
+  lifecycle {
+    ignore_changes = [
+      task_definition
+    ]
+  }
 
   depends_on = [
     aws_cloudwatch_log_group.app
   ]
+
+  tags = local.common_tags
 }

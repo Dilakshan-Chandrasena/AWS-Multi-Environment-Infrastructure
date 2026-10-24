@@ -19,21 +19,6 @@ variable "target_group_arn" {
   type        = string
 }
 
-variable "execution_role_arn" {
-  description = "ECS task execution role ARN."
-  type        = string
-}
-
-variable "task_role_arn" {
-  description = "Application task role ARN."
-  type        = string
-}
-
-variable "image_uri" {
-  description = "Container image URI, including its tag."
-  type        = string
-}
-
 variable "container_port" {
   description = "Port exposed by the application container."
   type        = number
@@ -51,27 +36,16 @@ variable "desired_count" {
   }
 }
 
-variable "cpu" {
-  description = "Fargate task CPU units."
-  type        = number
-  default     = 256
-}
-
-variable "memory" {
-  description = "Fargate task memory in MiB."
-  type        = number
-  default     = 512
-}
-
-variable "aws_region" {
-  description = "AWS region used by the container log configuration."
-  type        = string
-}
-
 variable "log_retention_days" {
   description = "Number of days to retain container logs."
   type        = number
   default     = 7
+}
+
+variable "create_service" {
+  description = "Whether Terraform should create the ECS service."
+  type        = bool
+  default     = false
 }
 
 variable "tags" {

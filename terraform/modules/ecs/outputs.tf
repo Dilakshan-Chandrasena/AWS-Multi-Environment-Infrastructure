@@ -6,12 +6,7 @@ output "cluster_name" {
 
 output "service_name" {
   description = "Name of the ECS service."
-  value       = aws_ecs_service.app.name
-}
-
-output "task_definition_arn" {
-  description = "ARN of the ECS task definition."
-  value       = aws_ecs_task_definition.app.arn
+  value       = var.create_service ? aws_ecs_service.app[0].name : null
 }
 
 output "log_group_name" {

@@ -36,5 +36,15 @@ output "ecs_cluster_name" {
 
 output "ecs_service_name" {
   description = "Name of the development ECS service."
-  value       = module.ecs.service_name
+  value       = "${var.environment}-platform-service"
+}
+
+output "ecs_execution_role_arn" {
+  description = "ARN of the ECS task execution role."
+  value       = module.iam.execution_role_arn
+}
+
+output "ecs_task_role_arn" {
+  description = "ARN of the ECS application task role."
+  value       = module.iam.task_role_arn
 }

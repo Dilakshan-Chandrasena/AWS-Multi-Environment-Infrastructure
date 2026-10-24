@@ -34,6 +34,17 @@ variable "private_subnet_cidrs" {
   type        = list(string)
 }
 
+
+variable "image_tag" {
+  description = "Immutable Docker image tag to deploy."
+  type        = string
+
+  validation {
+    condition     = length(var.image_tag) > 0
+    error_message = "image_tag must not be empty."
+  }
+}
+
 variable "app_port" {
   description = "Port for the application."
   type        = number
