@@ -148,10 +148,10 @@ jobs:
 
       - name: Initialize Terraform backend
         run: terraform init -input=false -lockfile=readonly
-
       - name: Generate Terraform plan
         run: |
           terraform plan \
+            -var-file=terraform.tfvars.example \
             -input=false \
             -no-color \
             -out=tfplan

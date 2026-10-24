@@ -34,9 +34,6 @@ variable "private_subnet_cidrs" {
   type        = list(string)
 }
 
-
-
-
 variable "app_port" {
   description = "Port for the application."
   type        = number
