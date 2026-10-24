@@ -43,18 +43,39 @@ resource "aws_lb_target_group" "app" {
   })
 }
 
+
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.this.arn
   port              = 80
   protocol          = "HTTP"
 
   default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.app.arn
+    type = var.certificate_arn == null ? "forward" : "redirect"
+
+    dynamic "redirect" {
+      for_each = var.certificate_arn == null ? [] : [1]
+
+      content {
+        port        = "443"
+        protocol    = "HTTPS"
+        status_code = "HTTP_301"
+      }
+    }
+
+    dynamic "forward" {
+      for_each = var.certificate_arn == null ? [1] : []
+
+      content {
+        target_group {
+          arn = aws_lb_target_group.app.arn
+        }
+      }
+    }
   }
 
   tags = local.common_tags
 }
+
 
 resource "aws_lb_listener" "https" {
   count = var.certificate_arn == null ? 0 : 1
