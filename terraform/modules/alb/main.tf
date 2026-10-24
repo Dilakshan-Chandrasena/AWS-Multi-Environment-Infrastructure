@@ -14,7 +14,7 @@ resource "aws_lb" "this" {
   subnets            = var.public_subnet_ids
 
   enable_deletion_protection = false
-  drop_invalid_header_fields = true  
+  drop_invalid_header_fields = true
   tags = merge(local.common_tags, {
     Name = "${var.name}-alb"
   })

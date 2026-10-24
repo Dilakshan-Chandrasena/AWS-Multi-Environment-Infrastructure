@@ -83,7 +83,7 @@ module "ecs" {
   container_port        = var.app_port
   desired_count         = 1
   log_retention_days    = 7
-  create_service        = false
+  create_service        = true
 
   tags = {
     Project     = "progress-partners-assessment"

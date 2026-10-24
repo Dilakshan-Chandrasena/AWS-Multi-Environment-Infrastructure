@@ -1,4 +1,3 @@
-
 name: Infrastructure CI/CD
 
 on:
@@ -13,7 +12,24 @@ on:
       - "terraform/**"
       - ".github/workflows/infra-ci-cd.yml"
   workflow_dispatch:
+    inputs:
+      operation:
+        description: "Choose whether to plan or apply infrastructure"
+        required: true
+        type: choice
+        options:
+          - plan
+          - apply
+        default: plan
 
+      environment:
+        description: "Environment to apply when operation is apply"
+        required: true
+        type: choice
+        options:
+          - dev
+          - prod
+        default: dev
 permissions:
   contents: read
 
@@ -22,10 +38,26 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  format:
+    name: Check Terraform formatting
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.10.5"
+          terraform_wrapper: false
+
+      - name: Check formatting
+        run: terraform fmt -check -recursive terraform/
   validate:
     name: Validate Terraform (${{ matrix.environment }})
     runs-on: ubuntu-latest
-
+    needs: format
     strategy:
       fail-fast: false
       matrix:
@@ -44,12 +76,6 @@ jobs:
         with:
           terraform_version: "1.10.5"
           terraform_wrapper: false
-
-      - name: Clear cached AWS provider package
-        run: rm -rf .terraform/providers
-
-      - name: Check formatting
-        run: terraform fmt -check -recursive
 
       - name: Initialize without backend
         run: terraform init -backend=false -input=false -lockfile=readonly
@@ -104,10 +130,10 @@ jobs:
         with:
           terraform_version: "1.10.5"
           terraform_wrapper: false
-       
+
       - name: Clear cached AWS provider package
         run: rm -rf .terraform/providers
-        
+
       - name: Configure AWS credentials using OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -122,4 +148,69 @@ jobs:
         run: terraform init -input=false -lockfile=readonly
 
       - name: Generate Terraform plan
-        run: terraform plan -input=false -no-color
+        run: |
+          terraform plan \
+            -input=false \
+            -no-color \
+            -out=tfplan
+
+      - name: Generate readable plan
+        run: terraform show -no-color tfplan > tfplan.txt
+
+      - name: Upload Terraform plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan-${{ matrix.environment }}-${{ github.sha }}
+          path: |
+            terraform/environments/${{ matrix.environment }}/tfplan
+            terraform/environments/${{ matrix.environment }}/tfplan.txt
+          retention-days: 3
+          if-no-files-found: error
+  terraform-apply:
+    name: Terraform Apply (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    needs: [validate, security-scan, terraform-plan]
+
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/main' &&
+      inputs.operation == 'apply'
+
+    environment: ${{ inputs.environment }}
+
+    permissions:
+      contents: read
+      id-token: write
+
+    defaults:
+      run:
+        working-directory: terraform/environments/${{ inputs.environment }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.10.5"
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials using OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_TERRAFORM_ROLE_ARN }}
+          aws-region: us-east-1
+          role-session-name: GitHubActionsTerraformApply
+
+      - name: Initialize Terraform backend
+        run: terraform init -input=false -lockfile=readonly
+
+      - name: Download saved Terraform plan
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-plan-${{ inputs.environment }}-${{ github.sha }}
+          path: terraform/environments/${{ inputs.environment }}
+
+      - name: Apply saved Terraform plan
+        run: terraform apply -input=false -no-color tfplan
