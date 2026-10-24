@@ -1,18 +1,18 @@
 
 {
-  "family": "dev-platform-task",
+  "family": "${ECS_TASK_FAMILY}",
   "networkMode": "awsvpc",
   "requiresCompatibilities": [
     "FARGATE"
   ],
   "cpu": "256",
   "memory": "512",
-  "executionRoleArn": "REPLACE_WITH_EXECUTION_ROLE_ARN",
-  "taskRoleArn": "REPLACE_WITH_TASK_ROLE_ARN",
+  "executionRoleArn": "${EXECUTION_ROLE_ARN}",
+  "taskRoleArn": "${TASK_ROLE_ARN}",
   "containerDefinitions": [
     {
-      "name": "dev-platform-app",
-      "image": "REPLACE_WITH_ECR_IMAGE_URI",
+      "name": "${CONTAINER_NAME}",
+      "image": "${IMAGE_URI}",
       "essential": true,
       "portMappings": [
         {
@@ -23,7 +23,7 @@
       "logConfiguration": {
         "logDriver": "awslogs",
         "options": {
-          "awslogs-group": "/ecs/dev-platform",
+          "awslogs-group": "${LOG_GROUP_NAME}",
           "awslogs-region": "us-east-1",
           "awslogs-stream-prefix": "app"
         }

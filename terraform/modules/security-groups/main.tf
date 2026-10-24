@@ -53,7 +53,13 @@ resource "aws_security_group" "app" {
     security_groups = [aws_security_group.alb.id]
   }
 
-  egress =[]
+  egress {
+  description = "Allow HTTPS outbound for ECR image pulls and CloudWatch Logs"
+  from_port   = 443
+  to_port     = 443
+  protocol    = "tcp"
+  cidr_blocks = ["0.0.0.0/0"]
+  }
 
   tags = merge(local.common_tags, {
     Name = "${var.name}-app-sg"
