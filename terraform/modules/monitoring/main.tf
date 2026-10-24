@@ -54,7 +54,7 @@ resource "aws_cloudwatch_metric_alarm" "running_tasks_low" {
   statistic           = "Average"
   period              = 300
   evaluation_periods  = 2
-  threshold           = 1
+  threshold           = var.desired_task_count
   comparison_operator = "LessThanThreshold"
   treat_missing_data  = "breaching"
 

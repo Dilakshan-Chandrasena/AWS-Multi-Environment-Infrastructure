@@ -18,3 +18,23 @@ output "nat_gateway_ids" {
   description = "Development NAT Gateway IDs by Availability Zone."
   value       = module.network.nat_gateway_ids
 }
+
+output "alb_dns_name" {
+  description = "DNS name of the development Application Load Balancer."
+  value       = module.alb.alb_dns_name
+}
+
+output "ecr_repository_url" {
+  description = "URL of the development ECR repository."
+  value       = module.ecr.repository_url
+}
+
+output "ecs_cluster_name" {
+  description = "Name of the development ECS cluster."
+  value       = module.ecs.cluster_name
+}
+
+output "ecs_service_name" {
+  description = "Name of the development ECS service."
+  value       = module.ecs.service_name
+}

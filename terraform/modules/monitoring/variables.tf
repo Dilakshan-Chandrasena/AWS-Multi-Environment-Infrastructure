@@ -26,6 +26,16 @@ variable "memory_threshold" {
   default     = 70
 }
 
+variable "desired_task_count" {
+  description = "Expected number of running ECS tasks."
+  type        = number
+
+  validation {
+    condition     = var.desired_task_count >= 1
+    error_message = "desired_task_count must be at least 1."
+  }
+}
+
 variable "tags" {
   description = "Tags to apply to monitoring resources."
   type        = map(string)

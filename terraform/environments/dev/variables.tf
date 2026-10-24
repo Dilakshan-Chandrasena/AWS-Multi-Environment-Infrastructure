@@ -33,3 +33,9 @@ variable "private_subnet_cidrs" {
   description = "CIDR ranges for private subnets."
   type        = list(string)
 }
+
+variable "app_port" {
+  description = "Port for the application."
+  type        = number
+  default     = 8080
+}

@@ -1,0 +1,110 @@
+module "network" {
+  source = "../../modules/network"
+
+  name               = "${var.environment}-platform"
+  vpc_cidr           = var.vpc_cidr
+  availability_zones = var.availability_zones
+
+  public_subnet_cidrs  = var.public_subnet_cidrs
+  private_subnet_cidrs = var.private_subnet_cidrs
+
+  tags = {
+    Project     = "progress-partners-assessment"
+    Environment = var.environment
+  }
+}
+
+module "security_groups" {
+  source = "../../modules/security-groups"
+
+  name     = "${var.environment}-platform"
+  vpc_id   = module.network.vpc_id
+  app_port = var.app_port
+
+  tags = {
+    Project     = "progress-partners-assessment"
+    Environment = var.environment
+  }
+}
+
+module "alb" {
+  source = "../../modules/alb"
+
+  name                  = "${var.environment}-platform"
+  vpc_id                = module.network.vpc_id
+  public_subnet_ids     = module.network.public_subnet_ids
+  alb_security_group_id = module.security_groups.alb_security_group_id
+
+  app_port          = var.app_port
+  health_check_path = "/health"
+
+  tags = {
+    Project     = "progress-partners-assessment"
+    Environment = var.environment
+  }
+}
+
+module "iam" {
+  source = "../../modules/iam"
+
+  name = "${var.environment}-platform"
+
+  tags = {
+    Project     = "progress-partners-assessment"
+    Environment = var.environment
+  }
+}
+
+module "ecr" {
+  source = "../../modules/ecr"
+
+  name = "progress-partners-assessment-${var.environment}"
+
+  tags = {
+    Project     = "progress-partners-assessment"
+    Environment = var.environment
+  }
+}
+
+module "ecs" {
+  source = "../../modules/ecs"
+
+  name                  = "${var.environment}-platform"
+  private_subnet_ids    = module.network.private_subnet_ids
+  app_security_group_id = module.security_groups.app_security_group_id
+  target_group_arn      = module.alb.target_group_arn
+  execution_role_arn    = module.iam.execution_role_arn
+  task_role_arn         = module.iam.task_role_arn
+
+  # Placeholder for planning only; publish the image before deployment.
+  image_uri = "${module.ecr.repository_url}:bootstrap"
+
+  container_port     = var.app_port
+  desired_count      = var.desired_count
+  cpu                = 256
+  memory             = 512
+  aws_region         = var.aws_region
+  log_retention_days = 30
+
+  tags = {
+    Project     = "progress-partners-assessment"
+    Environment = var.environment
+  }
+}
+
+module "monitoring" {
+  source = "../../modules/monitoring"
+
+  name               = "${var.environment}-platform"
+  cluster_name       = module.ecs.cluster_name
+  service_name       = module.ecs.service_name
+  desired_task_count = var.desired_count
+
+  cpu_threshold    = 70
+  memory_threshold = 70
+
+  tags = {
+    Project     = "progress-partners-assessment"
+    Environment = var.environment
+  }
+}
