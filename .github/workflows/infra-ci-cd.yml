@@ -16,22 +16,27 @@ on:
   workflow_dispatch:
     inputs:
       operation:
-        description: "Choose whether to plan or apply infrastructure"
+        description: "Generate plans for review, or apply a previously reviewed plan"
         required: true
         type: choice
         options:
           - plan
           - apply
         default: plan
-
       environment:
-        description: "Environment to apply when operation is apply"
+        description: "Environment to apply (used only for Apply)"
         required: true
         type: choice
         options:
           - dev
           - prod
         default: dev
+      plan_run_id:
+        description: "Successful Infrastructure CI/CD plan run ID (required for Apply)"
+        required: false
+        type: string
+        default: ""
+
 permissions:
   contents: read
 
@@ -43,19 +48,17 @@ jobs:
   format:
     name: Check Terraform formatting
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "1.10.5"
+          terraform_version: "1.12.2"
           terraform_wrapper: false
-
       - name: Check formatting
         run: terraform fmt -check -recursive terraform/
+
   validate:
     name: Validate Terraform (${{ matrix.environment }})
     runs-on: ubuntu-latest
@@ -64,35 +67,28 @@ jobs:
       fail-fast: false
       matrix:
         environment: [dev, prod]
-
     defaults:
       run:
         working-directory: terraform/environments/${{ matrix.environment }}
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "1.10.5"
+          terraform_version: "1.12.2"
           terraform_wrapper: false
-
       - name: Initialize without backend
         run: terraform init -backend=false -input=false -lockfile=readonly
-
       - name: Validate configuration
         run: terraform validate -no-color
 
   security-scan:
     name: Scan Terraform security
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Scan Terraform with Trivy
         uses: aquasecurity/trivy-action@v0.36.0
         with:
@@ -105,47 +101,37 @@ jobs:
   terraform-plan:
     name: Terraform Plan (${{ matrix.environment }})
     runs-on: ubuntu-latest
-    needs: [validate, security-scan]
-
-    # AWS access is restricted to the main branch.
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-
+    needs: [format, validate, security-scan]
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' ||
+       (github.event_name == 'workflow_dispatch' && inputs.operation == 'plan'))
     permissions:
       contents: read
       id-token: write
-
     strategy:
       fail-fast: false
       matrix:
         environment: [dev, prod]
-
     defaults:
       run:
         working-directory: terraform/environments/${{ matrix.environment }}
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "1.10.5"
+          terraform_version: "1.12.2"
           terraform_wrapper: false
-
-      - name: Clear cached AWS provider package
-        run: rm -rf .terraform/providers
-
       - name: Configure AWS credentials using OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_TERRAFORM_ROLE_ARN }}
           aws-region: us-east-1
           role-session-name: GitHubActionsTerraformPlan
-
       - name: Verify AWS identity
         run: aws sts get-caller-identity
-
       - name: Initialize Terraform backend
         run: terraform init -input=false -lockfile=readonly
       - name: Generate Terraform plan
@@ -155,64 +141,174 @@ jobs:
             -input=false \
             -no-color \
             -out=tfplan
-
       - name: Generate readable plan
         run: terraform show -no-color tfplan > tfplan.txt
-
-      - name: Upload Terraform plan
+      - name: Write plan metadata
+        env:
+          PLAN_ENVIRONMENT: ${{ matrix.environment }}
+          PLAN_COMMIT_SHA: ${{ github.sha }}
+          PLAN_REF: ${{ github.ref }}
+          PLAN_RUN_ID: ${{ github.run_id }}
+          PLAN_EVENT_NAME: ${{ github.event_name }}
+          PLAN_OPERATION: ${{ github.event_name == 'push' && 'push' || inputs.operation }}
+        run: |
+          jq -n \
+            --arg environment "$PLAN_ENVIRONMENT" \
+            --arg commit_sha "$PLAN_COMMIT_SHA" \
+            --arg ref "$PLAN_REF" \
+            --arg run_id "$PLAN_RUN_ID" \
+            --arg event_name "$PLAN_EVENT_NAME" \
+            --arg operation "$PLAN_OPERATION" \
+            '{environment:$environment, commit_sha:$commit_sha, ref:$ref, run_id:$run_id, event_name:$event_name, operation:$operation}' \
+            > plan-metadata.json
+      - name: Upload Terraform plan artifact
         uses: actions/upload-artifact@v4
         with:
-          name: terraform-plan-${{ matrix.environment }}-${{ github.sha }}
+          name: terraform-plan-${{ matrix.environment }}
           path: |
             terraform/environments/${{ matrix.environment }}/tfplan
             terraform/environments/${{ matrix.environment }}/tfplan.txt
+            terraform/environments/${{ matrix.environment }}/plan-metadata.json
           retention-days: 3
           if-no-files-found: error
-  terraform-apply:
-    name: Terraform Apply (${{ inputs.environment }})
-    runs-on: ubuntu-latest
-    needs: [validate, security-scan, terraform-plan]
 
+  verify-reviewed-plan:
+    name: Verify saved plan before approval
+    runs-on: ubuntu-latest
     if: >-
       github.event_name == 'workflow_dispatch' &&
       github.ref == 'refs/heads/main' &&
       inputs.operation == 'apply'
-
-    environment: ${{ inputs.environment }}
-
     permissions:
       contents: read
-      id-token: write
+      actions: read
+    steps:
+      - name: Require a plan run ID
+        env:
+          PLAN_RUN_ID: ${{ inputs.plan_run_id }}
+        run: |
+          if [[ ! "$PLAN_RUN_ID" =~ ^[0-9]+$ ]]; then
+            echo "A valid successful plan workflow run ID is required for Apply."
+            exit 1
+          fi
+      - name: Verify source plan workflow run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLAN_RUN_ID: ${{ inputs.plan_run_id }}
+          EXPECTED_SHA: ${{ github.sha }}
+          EXPECTED_BRANCH: main
+          EXPECTED_WORKFLOW: Infrastructure CI/CD
+        run: |
+          set -euo pipefail
+          run_json="$(gh run view "$PLAN_RUN_ID" --repo "$GITHUB_REPOSITORY" --json status,conclusion,headSha,headBranch,workflowName)"
+          echo "$run_json" | jq -e \
+            --arg sha "$EXPECTED_SHA" \
+            --arg branch "$EXPECTED_BRANCH" \
+            --arg workflow "$EXPECTED_WORKFLOW" \
+            '.status == "completed" and .conclusion == "success" and .headSha == $sha and .headBranch == $branch and .workflowName == $workflow' \
+            >/dev/null
+      - name: Download saved plan for pre-approval verification
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-plan-${{ inputs.environment }}
+          path: plan-artifact
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.plan_run_id }}
+      - name: Verify plan metadata before approval
+        env:
+          PLAN_RUN_ID: ${{ inputs.plan_run_id }}
+          EXPECTED_ENVIRONMENT: ${{ inputs.environment }}
+          EXPECTED_SHA: ${{ github.sha }}
+          EXPECTED_REF: refs/heads/main
+        run: |
+          set -euo pipefail
+          jq -e \
+            --arg environment "$EXPECTED_ENVIRONMENT" \
+            --arg sha "$EXPECTED_SHA" \
+            --arg ref "$EXPECTED_REF" \
+            --arg run_id "$PLAN_RUN_ID" \
+            '.environment == $environment and .commit_sha == $sha and .ref == $ref and .run_id == $run_id and ((.event_name == "push" and .operation == "push") or (.event_name == "workflow_dispatch" and .operation == "plan"))' \
+            plan-artifact/plan-metadata.json >/dev/null
 
+  terraform-apply:
+    name: Terraform Apply (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    needs: [format, validate, security-scan, verify-reviewed-plan]
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/main' &&
+      inputs.operation == 'apply'
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
     defaults:
       run:
         working-directory: terraform/environments/${{ inputs.environment }}
-
     steps:
+      - name: Require a plan run ID
+        env:
+          PLAN_RUN_ID: ${{ inputs.plan_run_id }}
+        run: |
+          if [[ ! "$PLAN_RUN_ID" =~ ^[0-9]+$ ]]; then
+            echo "A valid successful plan workflow run ID is required for Apply."
+            exit 1
+          fi
+      - name: Verify source plan workflow run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLAN_RUN_ID: ${{ inputs.plan_run_id }}
+          EXPECTED_SHA: ${{ github.sha }}
+          EXPECTED_BRANCH: main
+          EXPECTED_WORKFLOW: Infrastructure CI/CD
+        run: |
+          set -euo pipefail
+          run_json="$(gh run view "$PLAN_RUN_ID" --repo "$GITHUB_REPOSITORY" --json status,conclusion,headSha,headBranch,workflowName)"
+          echo "$run_json" | jq -e \
+            --arg sha "$EXPECTED_SHA" \
+            --arg branch "$EXPECTED_BRANCH" \
+            --arg workflow "$EXPECTED_WORKFLOW" \
+            '.status == "completed" and .conclusion == "success" and .headSha == $sha and .headBranch == $branch and .workflowName == $workflow' \
+            >/dev/null
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "1.10.5"
+          terraform_version: "1.12.2"
           terraform_wrapper: false
-
+      - name: Download saved Terraform plan
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-plan-${{ inputs.environment }}
+          path: terraform/environments/${{ inputs.environment }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.plan_run_id }}
+      - name: Verify plan metadata
+        env:
+          PLAN_RUN_ID: ${{ inputs.plan_run_id }}
+          EXPECTED_ENVIRONMENT: ${{ inputs.environment }}
+          EXPECTED_SHA: ${{ github.sha }}
+          EXPECTED_REF: refs/heads/main
+        run: |
+          set -euo pipefail
+          jq -e \
+            --arg environment "$EXPECTED_ENVIRONMENT" \
+            --arg sha "$EXPECTED_SHA" \
+            --arg ref "$EXPECTED_REF" \
+            --arg run_id "$PLAN_RUN_ID" \
+            '.environment == $environment and .commit_sha == $sha and .ref == $ref and .run_id == $run_id and ((.event_name == "push" and .operation == "push") or (.event_name == "workflow_dispatch" and .operation == "plan"))' \
+            plan-metadata.json >/dev/null
       - name: Configure AWS credentials using OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_TERRAFORM_ROLE_ARN }}
           aws-region: us-east-1
           role-session-name: GitHubActionsTerraformApply
-
       - name: Initialize Terraform backend
         run: terraform init -input=false -lockfile=readonly
-
-      - name: Download saved Terraform plan
-        uses: actions/download-artifact@v4
-        with:
-          name: terraform-plan-${{ inputs.environment }}-${{ github.sha }}
-          path: terraform/environments/${{ inputs.environment }}
-
       - name: Apply saved Terraform plan
         run: terraform apply -input=false -no-color tfplan
