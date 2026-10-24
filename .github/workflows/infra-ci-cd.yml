@@ -5,12 +5,14 @@ on:
     paths:
       - "terraform/**"
       - ".github/workflows/infra-ci-cd.yml"
+      - ".trivyignore"
   push:
     branches:
       - main
     paths:
       - "terraform/**"
       - ".github/workflows/infra-ci-cd.yml"
+      - ".trivyignore"
   workflow_dispatch:
     inputs:
       operation:

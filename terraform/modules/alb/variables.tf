@@ -31,11 +31,16 @@ variable "health_check_path" {
   default     = "/health"
 }
 
+
 variable "certificate_arn" {
-  description = "ACM certificate ARN for HTTPS. Null disables the HTTPS listener."
+  description = "ACM certificate ARN required for HTTPS."
   type        = string
-  default     = null
-  nullable    = true
+  nullable    = false
+
+  validation {
+    condition     = length(trimspace(var.certificate_arn)) > 0
+    error_message = "A valid ACM certificate ARN must be provided."
+  }
 }
 
 variable "tags" {

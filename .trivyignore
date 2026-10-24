@@ -1,0 +1,6 @@
+# Intentional: public ALB is required for the application's HTTPS endpoint.
+AVD-AWS-0053
+
+# Temporary exception: ECS tasks require outbound HTTPS for ECR and CloudWatch Logs.
+# Replace with restricted VPC endpoint access as a hardening improvement.
+AVD-AWS-0104

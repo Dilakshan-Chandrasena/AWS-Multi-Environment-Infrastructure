@@ -39,7 +39,9 @@ resource "aws_security_group" "alb" {
   }
 }
 
-
+#trivy:ignore:AVD-AWS-0104
+# Accepted temporarily: ECS tasks need outbound HTTPS for ECR and CloudWatch Logs via NAT.
+# Future hardening: use VPC endpoints and restrict outbound destinations.
 resource "aws_security_group" "app" {
   name_prefix = "${var.name}-app-"
   description = "Allows application traffic only from the ALB."
