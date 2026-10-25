@@ -125,7 +125,10 @@ jobs:
             --region "$AWS_REGION" \
             --query 'imageDetails[0].imageDigest' \
             --output text)
-
+          if [[ -z "$DEST_DIGEST" || "$DEST_DIGEST" == "None" ]]; then
+            echo "ERROR: Promoted image was not found in production ECR."
+            exit 1
+          fi
           echo "Source digest:     $SOURCE_DIGEST"
           echo "Destination digest: $DEST_DIGEST"
 
@@ -215,11 +218,27 @@ jobs:
             --region "$AWS_REGION"
 
       - name: Wait for production service stability
+        id: wait-stable
+        shell: bash
         run: |
-          aws ecs wait services-stable \
+          set -euo pipefail
+
+          if aws ecs wait services-stable \
             --cluster "$PROD_ECS_CLUSTER" \
             --services "$PROD_ECS_SERVICE" \
-            --region "$AWS_REGION"
+            --region "$AWS_REGION"; then
+            echo "Production ECS service is stable."
+          else
+            echo "ECS service failed to reach a stable state."
+            aws ecs describe-services \
+              --cluster "$PROD_ECS_CLUSTER" \
+              --services "$PROD_ECS_SERVICE" \
+              --region "$AWS_REGION" \
+              --query 'services[0].{Status:status,Desired:desiredCount,Running:runningCount,Pending:pendingCount,TaskDefinition:taskDefinition,Events:events[0:10]}' \
+              --output json || true
+            exit 1
+          fi
+
 
       - name: Verify production deployment
         shell: bash
