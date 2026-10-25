@@ -85,6 +85,7 @@ jobs:
         run: terraform validate -no-color
 
   security-scan:
+    needs: validate
     name: Terraform Security Scan
     runs-on: ubuntu-latest
 
