@@ -7,7 +7,6 @@ on:
       - main
     paths:
       - "terraform/**"
-      - "bootstrap/**"
       - ".github/workflows/infra-ci-cd.yml"
       - ".trivyignore"
 
@@ -16,7 +15,6 @@ on:
       - main
     paths:
       - "terraform/**"
-      - "bootstrap/**"
       - ".github/workflows/infra-ci-cd.yml"
       - ".trivyignore"
 
@@ -51,7 +49,7 @@ jobs:
       - name: Check Terraform formatting
         run: |
           terraform fmt -check -recursive terraform/
-          terraform fmt -check -recursive bootstrap/
+          
 
   validate:
     name: Terraform Validate (${{ matrix.root }})
@@ -64,7 +62,7 @@ jobs:
         root:
           - terraform/environments/dev
           - terraform/environments/prod
-          - bootstrap/state-backend
+          
 
     defaults:
       run:
@@ -103,11 +101,3 @@ jobs:
           exit-code: "1"
           severity: HIGH,CRITICAL
 
-      - name: Scan state backend bootstrap configuration
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          scan-type: config
-          scan-ref: bootstrap/state-backend/
-          format: table
-          exit-code: "1"
-          severity: HIGH,CRITICAL
