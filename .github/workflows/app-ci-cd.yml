@@ -1,4 +1,4 @@
-name: CI Pipeline
+name: Application CI/CD
 
 on:
   pull_request:
@@ -16,45 +16,49 @@ on:
 permissions:
   contents: read
 
+env:
+  AWS_REGION: us-east-1
+  AWS_ACCOUNT_ID: "796480644368"
+  ECR_REPOSITORY: progress-partners-assessment-dev
+  ECS_CLUSTER: dev-platform-cluster
+  ECS_SERVICE: dev-platform-service
+  ECS_TASK_FAMILY: dev-platform-task
+  CONTAINER_NAME: dev-platform-app
+  LOG_GROUP_NAME: /ecs/dev-platform
+  TASK_ROLE_ARN: arn:aws:iam::796480644368:role/dev-platform-task-eca91c57e0e2341584b253312c
+  EXECUTION_ROLE_ARN: arn:aws:iam::796480644368:role/dev-platform-execution-c712e98b80b791017b3915b286
+
 jobs:
   test:
     name: Unit Tests
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: app/requirements-dev.txt
-
       - name: Install dependencies
         working-directory: app
         run: python -m pip install -r requirements-dev.txt
-
       - name: Run unit tests
         run: python -m pytest app/test_app.py -v
 
   dependency-scan:
     name: Dependency Vulnerability Scan
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
       - name: Install pip-audit
         run: python -m pip install pip-audit
-
       - name: Audit application dependencies
         run: python -m pip_audit -r app/requirements.txt
 
@@ -64,82 +68,118 @@ jobs:
     needs:
       - test
       - dependency-scan
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Build Docker image
         run: |
           docker build \
-            --tag progress-partners-assessment:${{ github.sha }} \
+            --tag "progress-partners-assessment-dev:${GITHUB_SHA}" \
             ./app
-
       - name: Scan Docker image with Trivy
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: progress-partners-assessment:${{ github.sha }}
+          image-ref: progress-partners-assessment-dev:${{ github.sha }}
           format: table
           exit-code: "1"
           ignore-unfixed: true
           vuln-type: os,library
           severity: CRITICAL,HIGH
 
-  publish-ecr:
-    name: Publish Image to Amazon ECR
+  deploy:
+    name: Publish Image and Deploy to ECS
     runs-on: ubuntu-latest
     needs:
       - test
       - dependency-scan
       - docker-build
-
     if: >-
       github.event_name == 'push' &&
       github.ref == 'refs/heads/main' &&
       vars.ENABLE_ECR_PUSH == 'true'
-
     permissions:
       contents: read
       id-token: write
-
-    env:
-      AWS_REGION: us-east-1
-      ECR_REPOSITORY: progress-partners-assessment-dev
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Configure AWS credentials using OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-
+      - name: Verify AWS identity
+        run: aws sts get-caller-identity
       - name: Log in to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Build Docker image
+      - name: Build and push immutable image
         run: |
-          docker build \
-            --tag "$ECR_REPOSITORY:${GITHUB_SHA}" \
-            ./app
-
-      - name: Tag image for ECR
-        env:
-          AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
-        run: |
-          AWS_ACCOUNT_ID="${AWS_ROLE_ARN#arn:aws:iam::}"
-          AWS_ACCOUNT_ID="${AWS_ACCOUNT_ID%%:*}"
           ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-
-          docker tag \
-            "$ECR_REPOSITORY:${GITHUB_SHA}" \
-            "$ECR_REGISTRY/$ECR_REPOSITORY:${GITHUB_SHA}"
-
-          echo "ECR_REGISTRY=$ECR_REGISTRY" >> "$GITHUB_ENV"
-
-      - name: Push image to ECR
+          IMAGE_URI="${ECR_REGISTRY}/${ECR_REPOSITORY}:${GITHUB_SHA}"
+          docker build --tag "$IMAGE_URI" ./app
+          docker push "$IMAGE_URI"
+          echo "IMAGE_URI=$IMAGE_URI" >> "$GITHUB_ENV"
+      - name: Render ECS task definition
         run: |
-          docker push \
-            "$ECR_REGISTRY/$ECR_REPOSITORY:${GITHUB_SHA}"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          template_path = Path("app/ecs-task-definition.json")
+          output_path = Path("task-definition-rendered.json")
+          replacements = {
+              "${ECS_TASK_FAMILY}": os.environ["ECS_TASK_FAMILY"],
+              "${EXECUTION_ROLE_ARN}": os.environ["EXECUTION_ROLE_ARN"],
+              "${TASK_ROLE_ARN}": os.environ["TASK_ROLE_ARN"],
+              "${CONTAINER_NAME}": os.environ["CONTAINER_NAME"],
+              "${IMAGE_URI}": os.environ["IMAGE_URI"],
+              "${LOG_GROUP_NAME}": os.environ["LOG_GROUP_NAME"],
+          }
+
+          content = template_path.read_text(encoding="utf-8")
+          for placeholder, value in replacements.items():
+              content = content.replace(placeholder, value)
+
+          task_definition = json.loads(content)
+          assert task_definition["taskRoleArn"] == os.environ["TASK_ROLE_ARN"]
+          assert task_definition["executionRoleArn"] == os.environ["EXECUTION_ROLE_ARN"]
+          assert task_definition["containerDefinitions"][0]["image"] == os.environ["IMAGE_URI"]
+
+          output_path.write_text(json.dumps(task_definition, indent=2) + "\n", encoding="utf-8")
+          print(f"Rendered {output_path}")
+          print(f"Image: {task_definition['containerDefinitions'][0]['image']}")
+          print(f"Task role: {task_definition['taskRoleArn']}")
+          print(f"Execution role: {task_definition['executionRoleArn']}")
+          PY
+      - name: Register ECS task definition
+        id: register-task
+        run: |
+          TASK_DEFINITION_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://task-definition-rendered.json \
+            --region "$AWS_REGION" \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+          echo "task_definition_arn=$TASK_DEFINITION_ARN" >> "$GITHUB_OUTPUT"
+          echo "Registered $TASK_DEFINITION_ARN"
+      - name: Deploy to ECS
+        run: |
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER" \
+            --service "$ECS_SERVICE" \
+            --task-definition "${{ steps.register-task.outputs.task_definition_arn }}" \
+            --region "$AWS_REGION"
+      - name: Wait for ECS service stability
+        run: |
+          aws ecs wait services-stable \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE" \
+            --region "$AWS_REGION"
+      - name: Verify deployed service
+        run: |
+          aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE" \
+            --region "$AWS_REGION" \
+            --query 'services[0].{Status:status,TaskDefinition:taskDefinition,Desired:desiredCount,Running:runningCount,Pending:pendingCount}' \
+            --output table

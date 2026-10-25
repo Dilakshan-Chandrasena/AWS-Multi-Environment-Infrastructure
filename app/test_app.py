@@ -19,3 +19,10 @@ def test_home_endpoint():
 
     assert data["application"] == "Progress Partners Assessment App"
     assert data["status"] == "running"
+
+def test_hello_endpoint():
+    client = app.test_client()
+    response = client.get("/hello")
+
+    assert response.status_code == 200
+    assert response.get_json() == {"message": "Hello, World!"}

@@ -12,6 +12,10 @@ def home():
         "environment": os.getenv("APP_ENV", "local")
     })
 
+@app.get("/hello")
+def hello():
+    return jsonify({"message": "Hello, World!"}), 200
+
 @app.get("/health")
 def health():
     return jsonify({"status": "healthy"}), 200
