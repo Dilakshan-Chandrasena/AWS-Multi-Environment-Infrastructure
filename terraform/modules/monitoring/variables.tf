@@ -42,6 +42,28 @@ variable "create_alarms" {
   default     = false
 }
 
+variable "alb_arn_suffix" {
+  description = "ALB ARN suffix for CloudWatch metric dimensions."
+  type        = string
+}
+
+variable "target_group_arn_suffix" {
+  description = "Target group ARN suffix for CloudWatch metric dimensions."
+  type        = string
+}
+
+variable "alb_5xx_threshold" {
+  description = "ALB-generated 5xx errors allowed per evaluation period."
+  type        = number
+  default     = 5
+}
+
+variable "target_5xx_threshold" {
+  description = "Application-target 5xx errors allowed per evaluation period."
+  type        = number
+  default     = 5
+}
+
 variable "tags" {
   description = "Tags to apply to monitoring resources."
   type        = map(string)

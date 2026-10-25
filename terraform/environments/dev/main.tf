@@ -101,9 +101,11 @@ module "monitoring" {
   service_name       = "${var.environment}-platform-service"
   desired_task_count = 1
 
-  cpu_threshold    = 70
-  memory_threshold = 70
-  create_alarms    = false
+  cpu_threshold           = 70
+  memory_threshold        = 70
+  create_alarms           = true
+  alb_arn_suffix          = module.alb.alb_arn_suffix
+  target_group_arn_suffix = module.alb.target_group_arn_suffix
   tags = {
     Project     = "progress-partners-assessment"
     Environment = var.environment

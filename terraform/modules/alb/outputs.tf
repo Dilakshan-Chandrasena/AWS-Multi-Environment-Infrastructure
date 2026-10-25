@@ -18,3 +18,13 @@ output "alb_zone_id" {
   description = "Route 53 hosted zone ID associated with the ALB."
   value       = aws_lb.this.zone_id
 }
+
+output "alb_arn_suffix" {
+  description = "ARN suffix used in CloudWatch ALB metric dimensions."
+  value       = aws_lb.this.arn_suffix
+}
+
+output "target_group_arn_suffix" {
+  description = "ARN suffix used in CloudWatch target group metric dimensions."
+  value       = aws_lb_target_group.app.arn_suffix
+}

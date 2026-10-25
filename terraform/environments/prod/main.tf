@@ -76,6 +76,7 @@ module "ecs" {
   container_port        = var.app_port
   desired_count         = var.desired_count
   log_retention_days    = 30
+  create_service        = true
 
 
   tags = {
@@ -92,9 +93,11 @@ module "monitoring" {
   service_name       = "${var.environment}-platform-service"
   desired_task_count = var.desired_count
 
-  cpu_threshold    = 70
-  memory_threshold = 70
-  create_alarms    = false
+  cpu_threshold           = 70
+  memory_threshold        = 70
+  create_alarms           = true
+  alb_arn_suffix          = module.alb.alb_arn_suffix
+  target_group_arn_suffix = module.alb.target_group_arn_suffix
   tags = {
     Project     = "progress-partners-assessment"
     Environment = var.environment
