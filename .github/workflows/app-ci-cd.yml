@@ -89,6 +89,9 @@ jobs:
   deploy:
     name: Publish Image and Deploy to ECS
     runs-on: ubuntu-latest
+    concurrency:
+      group: ecs-dev-deployment
+      cancel-in-progress: false
     needs:
       - test
       - dependency-scan
@@ -175,11 +178,29 @@ jobs:
             --cluster "$ECS_CLUSTER" \
             --services "$ECS_SERVICE" \
             --region "$AWS_REGION"
+
       - name: Verify deployed service
+        env:
+          EXPECTED_TASK_DEFINITION: ${{ steps.register-task.outputs.task_definition_arn }}
+        shell: bash
         run: |
-          aws ecs describe-services \
+          set -euo pipefail
+
+          SERVICE_JSON=$(aws ecs describe-services \
             --cluster "$ECS_CLUSTER" \
             --services "$ECS_SERVICE" \
             --region "$AWS_REGION" \
-            --query 'services[0].{Status:status,TaskDefinition:taskDefinition,Desired:desiredCount,Running:runningCount,Pending:pendingCount}' \
-            --output table
+            --output json)
+
+          echo "$SERVICE_JSON" | jq -e \
+            --arg task_definition "$EXPECTED_TASK_DEFINITION" \
+            '
+              (.failures | length) == 0 and
+              (.services | length) == 1 and
+              .services[0].status == "ACTIVE" and
+              .services[0].taskDefinition == $task_definition and
+              .services[0].desiredCount > 0 and
+              .services[0].runningCount == .services[0].desiredCount and
+              .services[0].pendingCount == 0
+            '
+          echo "Deployment verification passed."
