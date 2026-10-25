@@ -1,0 +1,249 @@
+
+name: Production Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "40-character Git commit SHA tag of the image built in dev ECR"
+        required: true
+        type: string
+      confirm_production:
+        description: "Confirm deployment to production"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: us-east-1
+  AWS_ACCOUNT_ID: "796480644368"
+  DEV_ECR_REPOSITORY: progress-partners-assessment-dev
+  PROD_ECR_REPOSITORY: progress-partners-assessment-prod
+  PROD_ECS_CLUSTER: prod-platform-cluster
+  PROD_ECS_SERVICE: prod-platform-service
+  PROD_ECS_TASK_FAMILY: prod-platform-task
+  PROD_CONTAINER_NAME: prod-platform-app
+  PROD_LOG_GROUP_NAME: /ecs/prod-platform
+  PROD_TASK_ROLE_ARN: arn:aws:iam::796480644368:role/prod-platform-task-abadcbdcf8b898a17c1f586e02
+  PROD_EXECUTION_ROLE_ARN: arn:aws:iam::796480644368:role/prod-platform-execution-fbb8879fa6500e786e3130b6de
+
+jobs:
+  release:
+    name: Promote Image and Deploy to Production
+    runs-on: ubuntu-latest
+    environment: prod
+    concurrency:
+      group: ecs-production-deployment
+      cancel-in-progress: false
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      inputs.confirm_production == true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials using OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify AWS identity
+        run: aws sts get-caller-identity
+
+      - name: Validate source image
+        id: source
+        shell: bash
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$IMAGE_TAG" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Image tag must be a 40-character Git commit SHA."
+            exit 1
+          fi
+
+          SOURCE_DIGEST=$(aws ecr describe-images \
+            --repository-name "$DEV_ECR_REPOSITORY" \
+            --image-ids imageTag="$IMAGE_TAG" \
+            --region "$AWS_REGION" \
+            --query 'imageDetails[0].imageDigest' \
+            --output text)
+
+          if [[ -z "$SOURCE_DIGEST" || "$SOURCE_DIGEST" == "None" ]]; then
+            echo "Source image not found in dev ECR."
+            exit 1
+          fi
+
+          echo "digest=$SOURCE_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "Validated source digest: $SOURCE_DIGEST"
+
+      - name: Log in to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Promote image to production ECR
+        id: promote
+        shell: bash
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
+          SOURCE_DIGEST: ${{ steps.source.outputs.digest }}
+        run: |
+          set -euo pipefail
+
+          REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          SOURCE_IMAGE="${REGISTRY}/${DEV_ECR_REPOSITORY}@${SOURCE_DIGEST}"
+
+          RELEASE_TAG="release-${IMAGE_TAG}-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"
+          DEST_IMAGE="${REGISTRY}/${PROD_ECR_REPOSITORY}:${RELEASE_TAG}"
+
+          # Install Skopeo to copy the image without rebuilding it.
+          sudo apt-get update
+          sudo apt-get install -y skopeo
+
+          # Authenticate Skopeo to ECR.
+          aws ecr get-login-password --region "$AWS_REGION" |
+            skopeo login \
+              --username AWS \
+              --password-stdin "$REGISTRY"
+
+          # Copy the original image and require digest preservation.
+          skopeo copy \
+            --preserve-digests \
+            "docker://${SOURCE_IMAGE}" \
+            "docker://${DEST_IMAGE}"
+
+          # Verify the destination image digest.
+          DEST_DIGEST=$(aws ecr describe-images \
+            --repository-name "$PROD_ECR_REPOSITORY" \
+            --image-ids "imageTag=${RELEASE_TAG}" \
+            --region "$AWS_REGION" \
+            --query 'imageDetails[0].imageDigest' \
+            --output text)
+
+          echo "Source digest:     $SOURCE_DIGEST"
+          echo "Destination digest: $DEST_DIGEST"
+
+          if [[ "$SOURCE_DIGEST" != "$DEST_DIGEST" ]]; then
+            echo "ERROR: Image digest mismatch. Deployment blocked."
+            exit 1
+          fi
+
+          echo "image_uri=$DEST_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "Image promotion verified successfully."
+
+      - name: Render production ECS task definition
+        env:
+          IMAGE_URI: ${{ steps.promote.outputs.image_uri }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          template_path = Path("app/ecs-task-definition.json")
+          output_path = Path("task-definition-rendered.json")
+
+          replacements = {
+              "${ECS_TASK_FAMILY}": os.environ["PROD_ECS_TASK_FAMILY"],
+              "${EXECUTION_ROLE_ARN}": os.environ["PROD_EXECUTION_ROLE_ARN"],
+              "${TASK_ROLE_ARN}": os.environ["PROD_TASK_ROLE_ARN"],
+              "${CONTAINER_NAME}": os.environ["PROD_CONTAINER_NAME"],
+              "${IMAGE_URI}": os.environ["IMAGE_URI"],
+              "${LOG_GROUP_NAME}": os.environ["PROD_LOG_GROUP_NAME"],
+          }
+
+          content = template_path.read_text(encoding="utf-8")
+          for placeholder, value in replacements.items():
+              content = content.replace(placeholder, value)
+
+          task_definition = json.loads(content)
+
+          assert task_definition["family"] == os.environ["PROD_ECS_TASK_FAMILY"]
+          assert task_definition["taskRoleArn"] == os.environ["PROD_TASK_ROLE_ARN"]
+          assert task_definition["executionRoleArn"] == os.environ["PROD_EXECUTION_ROLE_ARN"]
+
+          container = next(
+              c for c in task_definition["containerDefinitions"]
+              if c["name"] == os.environ["PROD_CONTAINER_NAME"]
+          )
+          assert container["image"] == os.environ["IMAGE_URI"]
+
+          output_path.write_text(
+              json.dumps(task_definition, indent=2) + "\n",
+              encoding="utf-8",
+          )
+
+          print(f"Rendered task definition: {task_definition['family']}")
+          print(f"Production image: {container['image']}")
+          PY
+
+      - name: Register production task definition
+        id: register
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TASK_DEFINITION_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://task-definition-rendered.json \
+            --region "$AWS_REGION" \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+
+          echo "task_definition_arn=$TASK_DEFINITION_ARN" >> "$GITHUB_OUTPUT"
+          echo "Registered $TASK_DEFINITION_ARN"
+
+      - name: Deploy production ECS service
+        shell: bash
+        env:
+          TASK_DEFINITION_ARN: ${{ steps.register.outputs.task_definition_arn }}
+        run: |
+          set -euo pipefail
+
+          aws ecs update-service \
+            --cluster "$PROD_ECS_CLUSTER" \
+            --service "$PROD_ECS_SERVICE" \
+            --task-definition "$TASK_DEFINITION_ARN" \
+            --region "$AWS_REGION"
+
+      - name: Wait for production service stability
+        run: |
+          aws ecs wait services-stable \
+            --cluster "$PROD_ECS_CLUSTER" \
+            --services "$PROD_ECS_SERVICE" \
+            --region "$AWS_REGION"
+
+      - name: Verify production deployment
+        shell: bash
+        env:
+          EXPECTED_TASK_DEFINITION: ${{ steps.register.outputs.task_definition_arn }}
+        run: |
+          set -euo pipefail
+
+          SERVICE_JSON=$(aws ecs describe-services \
+            --cluster "$PROD_ECS_CLUSTER" \
+            --services "$PROD_ECS_SERVICE" \
+            --region "$AWS_REGION" \
+            --output json)
+
+          echo "$SERVICE_JSON" | jq -e \
+            --arg expected "$EXPECTED_TASK_DEFINITION" \
+            '
+              (.failures | length) == 0 and
+              (.services | length) == 1 and
+              .services[0].status == "ACTIVE" and
+              .services[0].taskDefinition == $expected and
+              .services[0].desiredCount > 0 and
+              .services[0].runningCount == .services[0].desiredCount and
+              .services[0].pendingCount == 0
+            '
+
+          echo "Production deployment verification passed."
