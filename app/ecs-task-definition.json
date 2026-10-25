@@ -1,10 +1,7 @@
-
 {
   "family": "${ECS_TASK_FAMILY}",
   "networkMode": "awsvpc",
-  "requiresCompatibilities": [
-    "FARGATE"
-  ],
+  "requiresCompatibilities": ["FARGATE"],
   "cpu": "256",
   "memory": "512",
   "executionRoleArn": "${EXECUTION_ROLE_ARN}",
