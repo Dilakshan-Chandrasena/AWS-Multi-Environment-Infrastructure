@@ -1,0 +1,25 @@
+name: Validate Production Workflow
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate Workflow Structure
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate production workflow YAML
+        run: |
+          python -m pip install PyYAML
+          python -c "import yaml; yaml.safe_load(open('.github/workflows/app-ci-cd-production.yml', encoding='utf-8')); print('Production workflow YAML is valid')"
+
+      - name: Validate task definition template
+        run: |
+          python -c "import json; json.load(open('app/ecs-task-definition.json', encoding='utf-8')); print('Task definition JSON is valid')"
