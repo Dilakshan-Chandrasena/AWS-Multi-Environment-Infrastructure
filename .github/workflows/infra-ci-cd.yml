@@ -33,7 +33,7 @@ permissions:
 
 concurrency:
   group: infra-ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   TF_IN_AUTOMATION: "true"
