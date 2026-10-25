@@ -17,8 +17,16 @@ on:
       - "terraform/**"
       - ".github/workflows/infra-ci-cd.yml"
       - ".trivyignore"
-
   workflow_dispatch:
+    inputs:
+      operation:
+        description: "Choose whether to plan or apply dev infrastructure"
+        required: true
+        type: choice
+        options:
+          - plan
+          - apply
+        default: plan
 
 permissions:
   contents: read
@@ -83,7 +91,6 @@ jobs:
 
       - name: Validate configuration
         run: terraform validate -no-color
-
   security-scan:
     needs: validate
     name: Terraform Security Scan
@@ -163,5 +170,52 @@ jobs:
             terraform/environments/dev/tfplan.txt
           retention-days: 3
           if-no-files-found: error
+  terraform-apply:
+    name: Terraform Apply (dev)
+    runs-on: ubuntu-latest
+    needs: terraform-plan
 
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/main' &&
+      inputs.operation == 'apply'
+
+    environment: dev
+
+    permissions:
+      contents: read
+      id-token: write
+
+    defaults:
+      run:
+        working-directory: terraform/environments/dev
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.12.2"
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials using OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_TERRAFORM_ROLE_ARN }}
+          aws-region: us-east-1
+          role-session-name: GitHubActionsTerraformApply
+
+      - name: Initialize Terraform backend
+        run: terraform init -input=false -lockfile=readonly
+
+      - name: Download saved Terraform plan
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-plan-dev-${{ github.sha }}
+          path: terraform/environments/dev
+
+      - name: Apply saved Terraform plan
+        run: terraform apply -input=false -no-color tfplan
 
