@@ -26,33 +26,6 @@ The application runs as an ECS Fargate service in private subnets. An internet-f
 
 GitHub Actions uses OIDC to obtain temporary AWS credentials for the relevant workflow role. Application images are stored in ECR. Terraform state is stored in an encrypted S3 backend with state locking, as configured by the backend setup.
 
-Add the diagrams below to the repository and keep them aligned with the Terraform code:
-
-```text
-docs/
-├── architecture-overview.png
-├── architecture-dev.png
-└── architecture-prod.png
-```
-
-#### Architecture diagram requirements
-
-The high-level diagram should show:
-
-- GitHub repository and GitHub Actions workflows.
-- OIDC trust from GitHub Actions to AWS IAM roles.
-- Separate development and production ECR repositories.
-- Separate dev and prod Terraform environments and AWS resources.
-- VPC boundaries, public/private subnets, and Availability Zones.
-- Internet Gateway, NAT Gateways, ALB, ECS Fargate services, and target groups.
-- CloudWatch logs, dashboards, and alarms.
-- SNS alert topic and its KMS encryption key.
-- S3 Terraform remote state backend and its access path.
-
-Use the following Markdown image link after adding the overview file:
-
-![High-level AWS architecture](docs/architecture-overview.png)
-
 ### Development and production separation
 
 Development and production are managed using separate Terraform environment roots and separate environment resources. Application deployment uses a development workflow, while production releases are handled by a separate manually triggered workflow.
@@ -68,7 +41,7 @@ Document concrete environment differences in this table after verifying the curr
 | Approval | As configured in GitHub | GitHub `prod` environment protection, if enabled |
 | Log retention and task sizing | Verify in Terraform | Verify in Terraform |
 
-Add the environment diagrams when available:
+The environment architecture diagrams:
 
 - [Development architecture](docs/architecture-dev.png)
 - [Production architecture](docs/architecture-prod.png)
@@ -96,7 +69,6 @@ Add the environment diagrams when available:
 │       └── validate-production-workflow.yml
 ├── .trivyignore
 ├── docs/
-│   ├── architecture-overview.png
 │   ├── architecture-dev.png
 │   └── architecture-prod.png
 └── README.md
