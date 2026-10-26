@@ -16,8 +16,6 @@ The main objectives are to:
 - Monitor application and infrastructure health.
 - Make deployment, security, and operational trade-offs explicit.
 
-> **Scope note:** This README describes the intended workflow and known configuration. Confirm the actual resources, GitHub settings, and workflow behaviour in the current repository before using these instructions in another AWS account.
-
 ## Architecture
 
 ### High-level architecture
@@ -52,32 +50,95 @@ The environment architecture diagrams:
 ## Repository Structure
 
 ```text
-.
+## Repository Structure
+AWS-Multi-Environment-Infrastructure/
+├── .github/
+│   └── workflows/
+│       ├── app-ci-cd.yml
+│       ├── app-ci-cd-production.yml
+│       └── infra-ci-cd.yml
+│
 ├── app/
+│   ├── .dockerignore
+│   ├── app.py
 │   ├── Dockerfile
 │   ├── ecs-task-definition.json
 │   ├── requirements.txt
 │   ├── requirements-dev.txt
 │   └── test_app.py
+│
+├── bootstrap/
+│   └── state-backend/
+│       ├── backend.tf
+│       ├── main.tf
+│       ├── outputs.tf
+│       ├── providers.tf
+│       ├── variables.tf
+│       ├── versions.tf
+│       ├── .terraform.lock.hcl
+│       └── terraform.tfvars
+│
+├── docs/
+│   └── Architecture diagrams and supporting images
+│
 ├── terraform/
 │   ├── environments/
 │   │   ├── dev/
+│   │   │   ├── backend.tf
+│   │   │   ├── main.tf
+│   │   │   ├── outputs.tf
+│   │   │   ├── providers.tf
+│   │   │   ├── variables.tf
+│   │   │   ├── versions.tf
+│   │   │   ├── terraform.tfvars.example
+│   │   │   └── .terraform.lock.hcl
+│   │   │
 │   │   └── prod/
+│   │       ├── backend.tf
+│   │       ├── main.tf
+│   │       ├── outputs.tf
+│   │       ├── providers.tf
+│   │       ├── variables.tf
+│   │       ├── versions.tf
+│   │       ├── terraform.tfvars.example
+│   │       └── .terraform.lock.hcl
+│   │
 │   └── modules/
-├── .github/
-│   └── workflows/
-│       ├── infra-ci-cd.yml
-│       ├── app-ci-cd.yml
-│       ├── app-ci-cd-production.yml
-│       └── validate-production-workflow.yml
+│       ├── alb/
+│       │   ├── main.tf
+│       │   ├── variables.tf
+│       │   └── outputs.tf
+│       ├── ecr/
+│       │   ├── main.tf
+│       │   ├── variables.tf
+│       │   └── outputs.tf
+│       ├── ecs/
+│       │   ├── main.tf
+│       │   ├── variables.tf
+│       │   └── outputs.tf
+│       ├── iam/
+│       │   ├── main.tf
+│       │   ├── variables.tf
+│       │   └── outputs.tf
+│       ├── monitoring/
+│       │   ├── main.tf
+│       │   ├── variables.tf
+│       │   └── outputs.tf
+│       ├── network/
+│       │   ├── main.tf
+│       │   ├── variables.tf
+│       │   └── outputs.tf
+│       └── security-groups/
+│           ├── main.tf
+│           ├── variables.tf
+│           └── outputs.tf
+│
+├── .gitignore
 ├── .trivyignore
-├── docs/
-│   ├── architecture-dev.png
-│   └── architecture-prod.png
-└── README.md
+├── README.md
+└── Task 05 - Dilakshan.pdf
 ```
 
-This is an indicative structure. Update it if the actual repository contains additional files or different workflow names.
 
 ## Prerequisites
 
