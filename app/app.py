@@ -14,7 +14,7 @@ def home():
 
 @app.get("/hello")
 def hello():
-    return jsonify({"message": "Hello, World!"}), 200
+    return jsonify({"message": "Hello, Progress Partners!"}), 200
 
 @app.get("/health")
 def health():

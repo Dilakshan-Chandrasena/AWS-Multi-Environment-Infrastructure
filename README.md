@@ -100,20 +100,22 @@ Use the appropriate environment and variable file for production planning.
 
 **Important:** A Terraform plan is not an approval to apply changes. Review resource replacements, deletions, networking changes, and estimated costs before applying anything.
 
-### Infrastructure CI workflow
+**### Infrastructure CI workflow**
 
 The Infrastructure CI workflow:
 
 1. Checks Terraform formatting.
 2. Initializes and validates the development and production configurations.
 3. Scans Terraform configuration using Trivy for HIGH and CRITICAL findings.
-4. Generates a development Terraform plan on eligible pushes to `main` and manual runs.
-5. Uploads the saved plan and readable plan output as a short-lived artifact.
-6. Supports an explicitly requested development apply using the saved plan.
+4. Generates separate development and production Terraform plans on eligible pushes to `main` and manual workflow runs.
+5. Uploads each environment's saved plan and readable plan output as a short-lived artifact.
+6. Supports an explicitly requested Terraform apply for the selected environment using the corresponding saved plan.
 
 Terraform planning and applying use GitHub Actions OIDC credentials rather than long-lived AWS access keys.
 
 Pull requests run formatting, validation, and security checks but do not run the AWS-backed Terraform plan.
+
+Infrastructure apply operations are restricted to manual workflow dispatches on `main`. Production applies should be protected by the configured GitHub `prod` environment approval rules. Review the saved plan and verify the target environment before approving or applying infrastructure changes.
 
 ## Application CI/CD
 
