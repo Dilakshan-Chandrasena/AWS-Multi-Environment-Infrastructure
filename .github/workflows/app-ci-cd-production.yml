@@ -114,6 +114,7 @@ jobs:
 
           # Copy the original image and require digest preservation.
           skopeo copy \
+            --all \
             --preserve-digests \
             "docker://${SOURCE_IMAGE}" \
             "docker://${DEST_IMAGE}"
