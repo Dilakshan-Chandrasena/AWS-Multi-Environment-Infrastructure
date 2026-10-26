@@ -32,19 +32,22 @@ Development and production are managed using separate Terraform environment root
 
 Document concrete environment differences in this table after verifying the current Terraform configuration:
 
-| Setting | Development | Production |
-|---|---|---|
-| Terraform root | `terraform/environments/dev` | `terraform/environments/prod` |
-| ECS service | Dev environment service | Prod environment service |
-| ECR repository | Development repository | Production repository |
-| Deployment trigger | Eligible push to `main`, subject to workflow settings | Manual production release workflow |
-| Approval | As configured in GitHub | GitHub `prod` environment protection, if enabled |
-| Log retention and task sizing | Verify in Terraform | Verify in Terraform |
+| Setting                       | Development                                           | Production                                       |
+| ----------------------------- | ----------------------------------------------------- | ------------------------------------------------ |
+| Terraform root                | `terraform/environments/dev`                          | `terraform/environments/prod`                    |
+| ECS service                   | Dev environment service                               | Prod environment service                         |
+| ECR repository                | Development repository                                | Production repository                            |
+| Deployment trigger            | Eligible push to `main`, subject to workflow settings | Manual production release workflow               |
+| Approval                      | As configured in GitHub                               | GitHub `prod` environment protection, if enabled |
+| Log retention and task sizing | Verify in Terraform                                   | Verify in Terraform                              |
 
 The environment architecture diagrams:
 
 - [Development architecture](docs/architecture-dev.png)
+![alt text](docs/image-1.png)
+
 - [Production architecture](docs/architecture-prod.png)
+![alt text](docs/image.png)
 
 ## Repository Structure
 
@@ -100,6 +103,7 @@ The infrastructure workflow expects the GitHub Actions secret:
 ```text
 AWS_TERRAFORM_ROLE_ARN
 ```
+
 
 The application workflow may require its own role ARN secret and repository variables. Check the workflow files for the exact names and permissions used by each workflow.
 
@@ -181,6 +185,7 @@ The workflow uses GitHub Actions OIDC credentials rather than long-lived AWS acc
 Infrastructure apply operations are restricted to manual workflow dispatches on `main` when `operation` is set to `apply`. Production applies should use the configured GitHub `prod` environment protection rules. Confirm the target environment, review the plan, and ensure the saved plan belongs to the intended commit before applying.
 
 The workflow scans Terraform configuration with the repository's `.trivyignore`. Exceptions should be narrow, documented, periodically reviewed, and removed when the underlying issue is fixed.
+![alt text](docs/image-3.png)
 
 ## Application CI/CD
 
@@ -214,6 +219,7 @@ The development workflow:
 7. Verifies the active task definition and running task counts.
 
 Deployment concurrency is controlled to avoid automatically cancelling an active development deployment.
+![alt text](docs/image-2.png)
 
 ### Production release
 
@@ -235,7 +241,7 @@ The workflow:
 6. Waits for service stability and verifies the deployed task definition and running task counts.
 
 Production releases are serialised through a dedicated concurrency group. Promoting the same image digest helps ensure that the artifact tested in development is the artifact released to production.
-
+![alt text](docs/image-4.png)
 ## Docker build strategy
 
 The current Python application is small, so a straightforward single-stage Docker build is a reasonable choice for this assessment. A multi-stage build is not automatically required for every Python service; its value depends on whether the build needs compilers, development headers, or other dependencies that should not be present in the runtime image.
