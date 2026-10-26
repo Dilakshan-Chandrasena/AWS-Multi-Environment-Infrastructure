@@ -96,11 +96,11 @@ module "ecs" {
 module "monitoring" {
   source = "../../modules/monitoring"
 
-  name               = "${var.environment}-platform"
-  cluster_name       = module.ecs.cluster_name
-  service_name       = "${var.environment}-platform-service"
-  desired_task_count = 1
-
+  name                    = "${var.environment}-platform"
+  cluster_name            = module.ecs.cluster_name
+  service_name            = "${var.environment}-platform-service"
+  desired_task_count      = 1
+  notification_email      = "dilakshan.personal@gmail.com"
   cpu_threshold           = 70
   memory_threshold        = 70
   create_alarms           = true

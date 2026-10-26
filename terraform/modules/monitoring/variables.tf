@@ -14,6 +14,16 @@ variable "service_name" {
   type        = string
 }
 
+variable "notification_email" {
+  description = "Email address to receive CloudWatch alarm notifications."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", var.notification_email))
+    error_message = "notification_email must be a valid email address."
+  }
+}
+
 variable "cpu_threshold" {
   description = "CPU utilization alarm threshold percentage."
   type        = number
