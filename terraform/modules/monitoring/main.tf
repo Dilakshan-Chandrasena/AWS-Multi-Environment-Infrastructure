@@ -8,10 +8,21 @@ locals {
 
 data "aws_region" "current" {}
 
+resource "aws_kms_key" "alerts" {
+  count = var.create_alarms ? 1 : 0
+
+  description             = "KMS key for ${var.name} SNS alert notifications"
+  deletion_window_in_days = 7
+  enable_key_rotation     = true
+
+  tags = local.common_tags
+}
+
 resource "aws_sns_topic" "alerts" {
   count = var.create_alarms ? 1 : 0
 
-  name = "${var.name}-alerts"
+  name              = "${var.name}-alerts"
+  kms_master_key_id = aws_kms_key.alerts[0].arn
 
   tags = local.common_tags
 }
